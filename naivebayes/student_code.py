@@ -1,79 +1,65 @@
 import math
-import sys
-import student_code as nbc
-import unittest
+import re
 
-def check_imports(source_name):
+class Bayes_Classifier:
+    def __init__(self):
+        self.categories = []  
+        self.category_counts = {}  
+        self.feature_tallies = {}  
+        self.words = set()  
 
-    imports = []
+    def preprocess_text(self, content):  
+        # Remove URLs
+        content = re.sub(r'http\S+|www\S+', '', content)
+        
+        # Remove HTML tags
+        content = re.sub(r'<.*?>', '', content)
+        
+        # Remove non-alphabetic characters and convert to lowercase
+        content = re.sub(r'[^a-zA-Z]', ' ', content).lower()
+        
+        # Tokenize the content
+        words = re.findall(r'\b\w+\b', content)
+        
+        # Remove stop words
+        stop_words = set(['the', 'a', 'an', 'is', 'are', 'to', 'in', 'for', 'of'])
+        words = [word for word in words if word not in stop_words]
 
-    with open('student_code.py',"r") as f:
-        tokens = f.read().replace("\n", " ").split()
+        return words
 
-    for i in range(len(tokens)-1):
-        if tokens[i] == 'import':
-            imports.append(tokens[i+1])
+    def train(self, data):  
+        for line in data:
+            label, _, content = line.split('|')  
+            words = self.preprocess_text(content)
+            if label not in self.categories:
+                self.categories.append(label)
+                self.category_counts[label] = 0
+                self.feature_tallies[label] = {}
+            self.category_counts[label] += 1
+            for word in words:
+                self.words.add(word)
+                if word not in self.feature_tallies[label]:
+                    self.feature_tallies[label][word] = 0
+                self.feature_tallies[label][word] += 1
 
-    print('Imported Packages:')
-    for i in range(len(imports)):
-        print('  %s' % imports[i])
-    print(' ')
-
-def f_score(data,predict):
-
-    actual = []
-
-    for line in data:
-        line = line.replace('\n','')
-        fields = line.split('|')
-        wID = int(fields[1])
-        sentiment = fields[0]
-        actual.append(sentiment)
-
-    tp = 0
-    fp = 0
-    tn = 0
-    fn = 0
-    for i in range(len(actual)):
-        if predict[i] == '5' and actual[i] == '5':
-            tp = tp + 1
-        if predict[i] == '5' and actual[i] == '1':
-            fp = fp + 1
-        if predict[i] == '1' and actual[i] == '1':
-            tn = tn + 1
-        if predict[i] == '1' and actual[i] == '5':
-            fn = fn + 1
-
-    precision = float(tp)/float(tp+fp)
-    recall = float(tp)/float(tp+fn)
-    f_score_p = float(2.0)*precision*recall/(precision+recall)
-
-    precision = float(tn)/float(tn+fn)
-    recall = float(tn)/(fp+tn)
-    f_score_n = float(2.0)*precision*recall/(precision+recall)    
-
-    return(f_score_p, f_score_n)
-
-data = []
-
-def load_data():
-    global data
-    f = open('alldata.txt', "r")
-    data = f.readlines()
-    f.close()
-
-class NaiveBayesTest(unittest.TestCase):
-
-    def test1(self):
-        classifier = nbc.Bayes_Classifier()
-        classifier.train(data[:12478])
-        predictions = classifier.classify(data[12478:])
-        fp, fn = f_score(data[12478:],predictions)
-        print(fp,fn)
-        self.assertGreater(fp,0.90)
-        self.assertGreater(fn,0.60)
-
-if __name__ == "__main__":
-    load_data()
-    unittest.main()
-
+    def classify(self, data):  
+        results = []  
+        for line in data:
+            _, _, content = line.split('|')  
+            words = self.preprocess_text(content)
+            max_prob = float('-inf')
+            max_class = None
+            for c in self.categories:
+                prob_c = math.log(self.category_counts[c]) - math.log(sum(self.category_counts.values()))
+                prob_x_c = 0
+                for word in words:
+                    count_wc = self.feature_tallies[c].get(word, 0) + 1
+                    count_c = sum(self.feature_tallies[c].values()) + len(self.words)
+                    prob_wc = math.log(count_wc) - math.log(count_c)
+                    prob_x_c += prob_wc
+                prob_c_x = prob_c + prob_x_c
+                if prob_c_x > max_prob:
+                    max_prob = prob_c_x
+                    max_class = c
+            results.append(max_class)
+        return results
